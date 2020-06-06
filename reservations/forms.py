@@ -1,6 +1,7 @@
 from django import forms
 from django.forms.forms import BoundField
 from django.template import Context, loader
+from reservations.models import SimpleReservation
 
 
 class TemplatedForm(forms.ModelForm):
@@ -19,3 +20,9 @@ class TemplatedForm(forms.ModelForm):
 
     def __unicode__(self):
         return self.output_via_template()
+
+class ReservationForm(TemplatedForm):
+    class Meta:
+        model = SimpleReservation
+        # exclude fields from standard Reservation model (show only extra ones in form)
+        exclude = ('user', 'date', 'created', 'updated', )

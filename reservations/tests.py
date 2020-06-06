@@ -1,5 +1,5 @@
 from django.test import TestCase
-from models import Reservation, SimpleReservation, Holiday
+from reservations.models import Reservation, SimpleReservation, Holiday
 from django.core.urlresolvers import reverse
 from django.test.client import Client
 from django.test.utils import override_settings
@@ -8,7 +8,7 @@ import json
 from django.db import models
 import datetime as dt
 from datetime import datetime
-from . import update_model
+# from . import update_model
 
 
 class ExtendedReservation(Reservation):

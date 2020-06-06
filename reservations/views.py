@@ -1,4 +1,4 @@
-from django.shortcuts import render_to_response
+from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.http import HttpResponseForbidden, HttpResponseBadRequest, HttpResponse
@@ -7,20 +7,24 @@ from django.conf import settings
 import time
 import datetime
 from django.db import models
-from django.utils.simplejson import JSONEncoder
+from json import JSONEncoder
 from django.core.serializers import serialize
 from django.db.models.query import QuerySet
 from django.forms.models import model_to_dict
-from models import *
+from reservations.models import SimpleReservation, Holiday, ReservationDay
 from django.db.models import F
 from django.utils.translation import ugettext as _
-from . import get_form, reservationModel
+# from . import get_form, reservationModel
 from django import http
-from django.utils import simplejson as json
+import json
 from django.views.generic import View
 import calendar
-from utils import send_email
+from reservations.utils import send_email
+from reservations.forms import ReservationForm
+from first_project.settings import LANGUAGE_CODE
 
+
+reservationModel = SimpleReservation
 
 class DjangoJSONEncoder(JSONEncoder):
     def default(self, obj):
@@ -43,7 +47,7 @@ class DjangoJSONEncoder(JSONEncoder):
 
 # From https://docs.djangoproject.com/en/1.4/topics/class-based-views/#more-than-just-html
 class JSONResponseMixin(object):
-    def render_to_response(self, context):
+    def render(self, context):
         "Returns a JSON response containing 'context' as payload"
         return self.get_json_response(self.convert_context_to_json(context))
 
@@ -63,17 +67,20 @@ class JSONResponseMixin(object):
 
 
 class Reservation(JSONResponseMixin, View):
+    print('Inside Reservation')
     @method_decorator(login_required)
     def post(self, request):
+        print('inside Post', request.method, request.POST)
         year = int(request.POST['year'])
         month = int(request.POST['month'])
         day = int(request.POST['day'])
         date = datetime.date(year, month, day)
-
+        print('Request.POST data', year, month, day, date)
         # If user is using custom form, validate it
-        form = get_form()(request.POST, initial={'user': request.user, 'date': date})
+        form = ReservationForm(request.POST, initial={'user': request.user, 'date': date})
+        print('form', form)
         if not form.is_valid():
-            return self.render_to_response({'success': False,
+            return self.render({'success': False,
                 'errors': [(k, v[0]) for k, v in form.errors.items()]})
 
         # Check if it is not a holiday day
@@ -127,14 +134,14 @@ class Reservation(JSONResponseMixin, View):
         reservation_dict = model_to_dict(reservation)
         reservation_dict['short_desc'] = reservation.short_desc()
         # Send fresh objects to user
-        return self.render_to_response({"reservation": reservation_dict,
+        return self.render({"reservation": reservation_dict,
                                         "reservation_day": ReservationDay.objects.get(id=reservation_day.id),
                                         "error": None})
 
     @method_decorator(login_required)
     def delete(self, request):
         """Delete user reservation (if canceling reservation is still possible)"""
-        reservation_id = int(request.REQUEST['id'])
+        reservation_id = int(request.GET['id'])
         reservation = reservationModel.objects.get(id=reservation_id, user=request.user)
         if not reservation:
             return HttpResponseBadRequest(_("No such reservation"))
@@ -147,15 +154,17 @@ class Reservation(JSONResponseMixin, View):
         reservation_day.spots_free = F('spots_free') + 1
         reservation_day.save()
 
-        return self.render_to_response({"reservation_day": ReservationDay.objects.get(id=reservation_day.id),
+        return self.render({"reservation_day": ReservationDay.objects.get(id=reservation_day.id),
                                         "reservation": reservation,
                                         "id": reservation_id,
                                         "error": None})
 
     @method_decorator(login_required)
     def get(self, request):
+        print('inside get', request.method, request.GET)
+
         """Get all user reservations for particular year"""
-        year = int(request.REQUEST['year'])
+        year = int(request.GET['year'])
         reservations = reservationModel.objects.filter(
             date__gte=datetime.date(year, 1, 1),
             date__lte=datetime.date(year, 12, 31),
@@ -167,18 +176,18 @@ class Reservation(JSONResponseMixin, View):
             elem['short_desc'] = reservation.short_desc()
             reservations_dict.append(elem)
 
-        return self.render_to_response({"reservations": reservations_dict,
+        return self.render({"reservations": reservations_dict,
                                         "error": None})
 
 
 def get_holidays(request):
     """Get holiday days in particular year"""
-    year = int(request.REQUEST['year'])
+    year = int(request.GET['year'])
     holidays = Holiday.objects.filter(
             date__gte=datetime.date(year, 1, 1),
             date__lte=datetime.date(year, 12, 31),
             active=True)
-    return HttpResponse(json.dumps({"holidays": [model_to_dict(x) for x in holidays], "error": None}, cls=DjangoJSONEncoder), mimetype="application/json")
+    return HttpResponse(json.dumps({"holidays": [model_to_dict(x) for x in holidays], "error": None}, cls=DjangoJSONEncoder))
 
 
 class MonthDetailView(JSONResponseMixin, View):
@@ -191,18 +200,21 @@ class MonthDetailView(JSONResponseMixin, View):
         reservation_days = ReservationDay.objects.filter(
             date__gte=date_from,
             date__lte=date_to)
-        return self.render_to_response(reservation_days)
+        return self.render(reservation_days)
 
 
 @login_required
 def calendar_view(request):
     """Calendar view available for logged in users"""
-    from . import get_form, reservationModel
-    form_details = get_form()
-    defaults = {
+    # from . import get_form, reservationModel
+    reservationModel = SimpleReservation
+    form_details = ReservationForm()
+    print('LANGUAGE_CODE',LANGUAGE_CODE)
+    context = {
         "spots_total": settings.RESERVATION_SPOTS_TOTAL,
         "get_extra_data": "true" if reservationModel != SimpleReservation else "false",
-        "reservations_limit": getattr(settings, 'RESERVATIONS_PER_DAY', 0)
+        "reservations_limit": getattr(settings, 'RESERVATIONS_PER_DAY', 0),
+        'LANGUAGE_CODE':LANGUAGE_CODE,
+        'form_details':form_details
     }
-    return render_to_response("calendar.html", dict(defaults=defaults, form_details=form_details),
-        context_instance=RequestContext(request))
+    return render(request, "calendar.html", context)

@@ -8,6 +8,8 @@
 
 {% block content %}
 
+
+
 <div class="container">
 <!--     <div id="form_details">{{ form_details }}<div> -->
     <div class="row">
@@ -63,12 +65,11 @@
   </div>
 </div>
 <form action="." method="post">{% csrf_token %}</form>
-
 <script>
     App.defaults = {
-        spots_free: {{ defaults.spots_total }},
-        get_extra_data: {{ defaults.get_extra_data }},
-        reservations_limit: {{ defaults.reservations_limit }}
+        spots_free: {{ spots_total }},
+        get_extra_data: {{ get_extra_data }},
+        reservations_limit: {{ reservations_limit }}
     };
 </script>
 {% endblock %}
